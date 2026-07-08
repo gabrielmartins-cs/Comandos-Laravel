@@ -1,0 +1,11 @@
+ $jsonBruto = $request->input('processo_dados');
+
+    $dadosDoProcesso = json_encode($jsonBruto) ? json_decode($jsonBruto, true) : [];
+
+    $numeroCNJ   = $dadosDoProcesso['20378||'] ?? null;
+    $idPdf       = $dadosDoProcesso['17684||'] ?? null;
+    $nomePdf     = $dadosDoProcesso['17684||nome'] ?? null;
+    $idDocx      = $dadosDoProcesso['20554||'] ?? null;
+    $nomeDocx    = $dadosDoProcesso['20554||nome'] ?? null;
+
+    $textoPeticaoInicial = $this->extrair_texto($idPdf);
