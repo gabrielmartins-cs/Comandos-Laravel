@@ -17,3 +17,12 @@ php artisan migrate --path=database/migrations/2026_07_08_094449_create_tese_for
 4) sempre que alterar rodar esse comando: 
 
 php artisan migrate:refresh
+
+
+5) deletar uma tabela
+inserir dentro dos migrations
+Schema::table('palavras_teses', function (Blueprint $table) {
+        $table->dropColumn('field_id'); // <--- Linha que você deve adicionar
+    });
+
+depois rodar: php artisan migrate
