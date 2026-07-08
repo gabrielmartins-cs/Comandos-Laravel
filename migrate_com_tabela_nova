@@ -13,3 +13,7 @@ php artisan make:model TeseFormatada -mcr
 
 3) rodar o migrate
 php artisan migrate --path=database/migrations/2026_07_08_094449_create_tese_formatadas_table.php
+
+4) sempre que alterar rodar esse comando: 
+
+php artisan migrate:refresh
