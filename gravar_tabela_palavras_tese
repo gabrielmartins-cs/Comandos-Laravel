@@ -1,0 +1,566 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
+
+use App\Classes\ArcherSOAP;
+use App\Classes\ArcherRest;
+
+use App\Http\Controllers\TessesDossieController;
+
+class DossieController extends Controller
+{
+
+public function btnGerarDossie (Request $request)
+{
+    $jsonBruto = $request->input('processo_dados');
+    
+    $dadosDoProcesso = json_encode($jsonBruto) ? json_decode($jsonBruto, true) : [];
+
+    $numeroCNJ   = $dadosDoProcesso['20378||'] ?? null;
+    $idPdf       = $dadosDoProcesso['17684||'] ?? null;
+    $nomePdf     = $dadosDoProcesso['17684||nome'] ?? null;
+    $idDocx      = $dadosDoProcesso['20554||'] ?? null;
+    $nomeDocx    = $dadosDoProcesso['20554||nome'] ?? null;
+
+    $textoPeticaoInicial = $this->extrair_texto($idPdf );
+
+    dd($textoPeticaoInicial );
+
+
+}
+
+public function editar_teses() {
+
+ $mapeamentoTeses = [
+            '[TESE-01] - DA INADEQUAÇÃO DA VIA ELEITA' => [
+                'field_id' => '28314',
+                'termos' => ['via eleita', 'inadequação da via', 'inadequada a via']
+            ],
+            '[TESE-02] - DA INAPLICABILIDADE DO RITO ESCOLHIDO' => [
+                'field_id' => '28315',
+                'termos' => ['rito escolhido', 'inaplicabilidade do rito', 'rito incorreto']
+            ],
+            '[TESE-03] - ABSOLUTA DO JUIZADO ESPECIAL' => [
+                'field_id' => '28316',
+                'termos' => ['juizado especial', 'jec', 'complexidade da causa']
+            ],
+            '[TESE-04] - DA INCOMPETÊNCIA DA JUSTIÇA FEDERAL' => [
+                'field_id' => '28317',
+                'termos' => ['justiça federal', 'JUIZ FEDERAL', 'competência da justiça federal', 'cef', 'caixa econômica', 'CAIXA ECONÔMICA FEDERAL']
+            ],
+            '[TESE-05] - DA INCORPORAÇÃO EMPRESARIAL - XS2' => [
+                'field_id' => '28318',
+                'termos' => ['xs2', 'incorporação', 'incorporadora']
+            ],
+            '[TESE-06] - INVERSÃO DO ÔNUS DA PROVA' => [
+                'field_id' => '28319',
+                'termos' => ['ônus da prova', 'inversão do ônus', 'inverter o ônus', 'artigo 6º', 'cdc']
+            ],
+            '[TESE-07] - DANO ESTÉTICO' => [
+                'field_id' => '28320',
+                'termos' => ['estético', 'dano estético', 'deformidade']
+            ],
+            '[TESE-08] - DA LITIGÂNCIA DE MÁ-FÉ - ADVOCACIA PREDATÓRIA' => [
+                'field_id' => '28321',
+                'termos' => ['predatória', 'advocacia predatória', 'litigância de má-fé']
+            ],
+            '[TESE-09] - DA LITIGÂNCIA DE MÁ-FÉ - INTENCIONAL FRACIONAMENTO' => [
+                'field_id' => '28322',
+                'termos' => ['fracionamento', 'fracionar', 'várias ações']
+            ],
+            '[TESE-10] - DA LITISPENDÊNCIA' => [
+                'field_id' => '28323',
+                'termos' => ['litispendência', 'ação idêntica', 'processo idêntico']
+            ],
+            '[TESE-11] - DA NECESSIDADE DE REUNIÃO - CONEXÃO' => [
+                'field_id' => '28324',
+                'termos' => ['conexão', 'reunião de processos', 'processos conexos']
+            ],
+            '[TESE-12] - DA POSSIBILIDADE DE EXIGÊNCIA DOCUMENTAL' => [
+                'field_id' => '28325',
+                'termos' => ['exigência documental', 'documentos indispensáveis']
+            ],
+            '[TESE-13] - DA PRESCRIÇÃO (3, 5 E 10)' => [
+                'field_id' => '28326',
+                'termos' => [
+                    'prescrição',
+                    'prescrito',
+                    'prazo prescricional',
+                    'prescreveu',
+                    'foi assinado em',
+                    'anos depois',
+                    'contrato firmado em 201', 
+                    'há mais de',
+                    'longo decurso',
+                    'passados anos'
+                ]
+            ],
+            '[TESE-14] - DANO MORAL' => [
+                'field_id' => '28327',
+                'termos'   => [
+                    'dano moral',
+                    'danos morais',
+                    'mero aborrecimento',
+                    'mero dissabor',
+                    'inadimplemento contratual',
+                    'pequenos transtornos',
+                    'direitos da personalidade',
+                    'vexame',
+                    'humilhação'
+                ]
+            ],
+            '[TESE-15] - DO CHAMAMENTO DO FEITO A ORDEM' => [
+                'field_id' => '28328',
+                'termos' => ['chamamento do feito', 'chamar o feito à ordem']
+            ],
+            '[TESE-16] - DO INEXISTENTE DESVIO PRODUTIVO' => [
+                'field_id' => '28329',
+                'termos' => ['desvio produtivo', 'tempo perdido', 'perda do tempo']
+            ],
+            '[TESE-17] - DOS CONSECTÁRIOS LEGAIS E HONORÁRIOS' => [
+                'field_id' => '28330',
+                'termos' => ['sucumbência', 'honorários advocatícios', 'juros e correção', 'corrigido', 'SELIC', 'IPCA', 'monetariamente']
+            ],
+            '[TESE-18] - GRATUIDADE' => [
+                'field_id' => '28331',
+                'termos' => ['gratuita', 'justiça gratuita', 'assistência judiciária', 'pobre na forma da lei']
+            ],
+            '[TESE-19] - HONORÁRIOS ADVOCATÍCIOS' => [
+                'field_id' => '28332',
+                'termos' => ['honorários', 'arbitramento de honorários', 'sucumbência', '9.099/95']
+            ],
+            '[TESE-20] - ILEGITIMIDADE PASSIVA DA CAIXA VIDA E PREVIDÊNCIA QUANTO AO PEDIDO DE RECÁLCULO' => [
+                'field_id' => '28333',
+                'termos'   => [
+                    'ilegitimidade passiva',
+                    'recálculo',
+                    'revisão de parcelas',
+                    'empréstimo consignado',
+                    'saldo devedor',
+                    'seguro prestamista',
+                    'concessão do crédito',
+                    'Caixa Econômica Federal'
+                ]
+            ],
+            '[TESE-21] - IMPUGNAÇÃO A ALEGAÇÃO DE COAÇÃO' => [
+                'field_id' => '28334',
+                'termos' => ['coação', 'coagido', 'forçado a assinar']
+            ],
+            '[TESE-22] - IMPUGNAÇÃO AO PEDIDO DE TUTELA' => [
+                'field_id' => '28335',
+                'termos' => [
+                    'tutela de urgência',
+                    'tutela antecipada',
+                    'antecipação de tutela',
+                    'tutela provisória',
+                    'medida liminar',
+                    'pedido liminar',
+                    'provimento liminar',
+                    'inaudita altera pars',
+                    'inaudita altera parte',
+                    'fumus boni iuris',
+                    'periculum in mora',
+                    'probabilidade do direito',
+                    'perigo de dano',
+                    'astreintes',
+                    'multa diária',
+                    'art. 300',
+                    'artigo 300',
+                    'suspensão dos descontos',
+                    'suspensão das cobranças',
+                    'imediata suspensão',
+                    'cessem imediatamente',
+                    'abstenha de efetuar',
+                    'abstenham de efetuar',
+                    'exclusão do spc',
+                    'exclusão do serasa',
+                    'retirada do nome',
+                    'abstenha de negativar',
+                    'órgãos de proteção ao crédito',
+                    'órgãos de restrição ao crédito'
+                ]
+
+            ],
+            '[TESE-23] - EXIBIÇÃO DE DOCUMENTOS' => [
+                'field_id' => '28336',
+                'termos' => ['exibição de documentos', 'exibir documento']
+            ],
+            '[TESE-24] - INEXISTÊNCIA DE MÁ-FÉ E INAPLICABILIDADE DA REPETIÇÃO EM DOBRO' => [
+                'field_id' => '28337',
+                'termos' => ['repetição em dobro', 'devolução em dobro', 'indébito', 'repetição do indébito em dobro', 'restituição em dobro', 'art. 42', 'art. 42, parágrafo único', 'má-fé das rés', 'ausência de engano justificável', 'valores indevidamente debitados']
+            ],
+            '[TESE-25] - INEXISTÊNCIA DE VENDA CASADA' => [
+                'field_id' => '28338',
+                'termos' => ['venda casada', 'condicionou a compra', 'seguro embutido']
+            ],
+            '[TESE-26] - INVERSÃO DO ÔNUS DA PROVA' => [
+                'field_id' => '28339',
+                'termos' => ['inversão do ônus da prova', 'ônus da prova', 'art. 6º, VIII', 'art. 6, viii', 'hipossuficiente', 'vulnerabilidade', 'hipervulneráveis']
+            ],
+            '[TESE-27] - PRELIMINAR DE INGRESSO ESPONTÂNEO' => [
+                'field_id' => '28340',
+                'termos' => [
+                    'caixa seguradora',
+                    'caixa seguradora s/a',
+                    'caixa seguradora s.a',
+                    'caixa econômica federal',
+                    'caixa economica federal',
+                    'cef',
+                    'xs2',
+                    'xs3',
+                    'banco caixa',
+                    '02.860.003/0001-51',
+                    '00.360.305/0001-04'
+                ]
+
+            ],
+            '[TESE-28] - A AUSÊNCIA DE INTERESSE DE AGIR' => [
+                'field_id' => '28341',
+                'termos' => ['assinatura aposta', 'instrumento foi assinado', 'apólice anexa', 'documentos para assinatura', 'obtenção de uma assinatura', 'não reflete uma manifestação de vontade livre', 'contrato de adesão']
+            ],
+            '[TESE-29] - DA COISA JULGADA' => [
+                'field_id' => '28342',
+                'termos' => ['coisa julgada', 'já julgado', 'imutável']
+            ],
+            '[TESE-30] - DA EXTINÇÃO DO MANDATO EM RAZÃO DO FALECIMENTO DA AUTORA' => [
+                'field_id' => '28343',
+                'termos'   => [
+                    'falecimento',
+                    'óbito',
+                    'morte',
+                    'extinção do mandato',
+                    'certidão de óbito',
+                    'capacidade postulatória',
+                    'art. 682',
+                    'capacidade processual'
+                ]
+            ],
+            '[TESE-31] - DA FALTA DE INTERESSE PROCESSUAL POR AUSÊNCIA DE COMUNICADO DE SINISTRO' => [
+                'field_id' => '28344',
+                'termos'   => [
+                    'aviso de sinistro',
+                    'comunicado de sinistro',
+                    'prévio requerimento administrativo',
+                    'via administrativa',
+                    'pretensão resistida',
+                    'comunicação do sinistro',
+                    'falta de interesse de agir',
+                    'ausência de requerimento'
+                ]
+
+            ],
+            '[TESE-32] - DA ILEGITIMIDADE ATIVA DO AUTOR' => [
+                'field_id' => '28345',
+                'termos'   => [
+                    'ilegitimidade ativa',
+                    'direito alheio em nome próprio',
+                    'pleitear, em nome próprio, direito alheio',
+                    'não é um dos beneficiários',
+                    'não beneficiário',
+                    'não indicado na apólice',
+                    'mero herdeiro',
+                    'art. 18 do cpc',
+                    'art. 18 do ncpc',
+                    'ilegitimidade da parte',
+                    'ausência de legitimidade'
+                ]
+            ],
+            '[TESE-33] - DA ILEGITIMIDADE DO RESPONSÁVEL TRIBUTÁRIO' => [
+                'field_id' => '28346',
+                'termos'   => [
+                    'ilegitimidade do responsável',
+                    'responsável tributário',
+                    'imposto de renda retido na fonte',
+                    'IRRF',
+                    'fonte pagadora',
+                    'retenção na fonte',
+                    'União',
+                    'Fazenda Nacional',
+                    'art. 45 do CTN'
+                ]
+            ],
+            '[TESE-34] - DA IMPOSSIBILIDADE DA INCIDÊNCIA DO CÓDIGO DE DEFESA DO CONSUMIDOR EM RAZÃO DO PRINCÍPIO DA ESPECIALIDADE' => [
+                'field_id' => '28347',
+                'termos'   => [
+                    'princípio da especialidade',
+                    'inaplicabilidade do CDC',
+                    'afastar o CDC',
+                    'mutualidade',
+                    'cálculo atuarial',
+                    'resolução da SUSEP',
+                    'CNSP',
+                    'Decreto-Lei 73',
+                    'norma específica'
+                ]
+            ],
+            '[TESE-35] - DA IMPOSSIBILIDADE DA REQUERIDA EM CUSTEAR DESPESAS PROBATÓRIAS' => [
+                'field_id' => '28348',
+                'termos'   => [
+                    'custeio',
+                    'adiantamento de honorários',
+                    'honorários periciais',
+                    'despesas probatórias',
+                    'perícia grafotécnica',
+                    'ônus financeiro',
+                    'pagamento da perícia',
+                    'art. 95',
+                    'custear a prova'
+                ]
+            ],
+            '[TESE-36] - Da impossibilidade de incidência do Código de Defesa do Consumidor em razão do Princípio da Especialidade' => [
+                'field_id' => '28349',
+                'termos'   => [
+                    'princípio da especialidade',
+                    'lex specialis',
+                    'equilíbrio atuarial',
+                    'limites de cobertura',
+                    'regras técnicas',
+                    'regramento próprio',
+                    'Decreto-Lei 73',
+                    'autonomia da vontade',
+                    'riscos predeterminados'
+                ]
+            ],
+            '[TESE-37] - DA IMPUGNAÇÃO AO PEDIDO LIMINAR DE APRESENTAÇÃO DE APÓLICES E CONTRATOS DE SEGURO' => [
+                'field_id' => '28350',
+                'termos' => ['exibição de documentos', 'exibir apólice', 'apresentar contrato', 'juntada do contrato', 'determinar a juntada', 'apresentação da apólice', 'tutela para exibir', 'liminar para apresentação', 'obrigação de fazer exibição', 'documentos em posse da ré']
+            ],
+            '[TESE-38] - DA INCOMPETÊNCIA DA JUSTIÇA FEDERAL PARA JULGAMENTO DO FEITO' => [
+                'field_id' => '28350',
+                'termos'   => [
+                    'incompetência absoluta',
+                    'Justiça Federal',
+                    'incompetência ratione personae',
+                    'Caixa Econômica Federal',
+                    'CEF',
+                    'pessoa jurídica de direito privado',
+                    'Caixa Seguradora',
+                    'foro federal',
+                    'mero agente operador'
+                ]
+            ],
+
+            '[TESE-39] - DA REPETIÇÃO DO INDÉBITO' => [
+                'field_id' => '28350',
+                'termos'   => [
+                    'seguro prestamista',
+                    'seguro prestamista',
+                    'repetição de indébito',
+                    'repetição do indébito',
+                    'em dobro',
+                    'desconto indevido',
+                    'seguro não contratado',
+                    'dever de informação',
+                    'Art. 42, do CDC',
+                    'apólice',
+                    'empréstimo consignado'
+                ]
+            ]
+
+        ];
+
+// Percorre o array salvando também o field_id exigido pelo banco
+    foreach ($mapeamentoTeses as $nomeTese => $dados) {
+        DB::table('palavras_teses')->insert([
+            'nome'       => $nomeTese,
+            'field_id'   => $dados['field_id'], // Enviando o field_id para evitar o erro
+            'termos'     => json_encode($dados['termos'], JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    // Busca os dados atualizados para exibir na view
+    $teses = DB::table('palavras_teses')->get();
+
+    return view('gabriel.editar_teses', compact('teses'));
+    }
+
+
+function extrair_texto($idArquivo)
+{
+        try {
+            $url = 'http://172.32.1.229:9000/extract_text';
+            $response = \Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'api-key' => '8cb99ca8-9e55-11ed-a8fc-0242ac120002'
+            ])->post($url, [
+                'id' => [$idArquivo]
+            ]);
+            return $response->body();
+        } catch (\Exception $e) {
+            throw new \Exception("Erro ao conectar na API: " . $e->getMessage());
+        }
+}
+
+public function exibirTela(Request $request){
+
+        $borabill = $this->DadosdoProcesso();
+
+        $msgErro = 'ERRO: Falta dado';
+        
+        $resultado = array_map(function($item) use ($msgErro) {
+        // Retorna apenas os campos desejados com as chaves mantidas ou tratadas
+      return [
+                "20378||"               => $item["20378||"] ?? $msgErro,               
+                "17591||"               => $item["17591||"] ?? $msgErro,               
+                "20836||"               => $item["20836||"] ?? 0, // Mantive 0 para o valor da causa não quebrar a formatação de moeda na Blade
+                "16107||"               => $item["16107||"] ?? $msgErro,               
+                "17714|| @displayName"  => $item["17714|| @displayName"] ?? $msgErro,  
+                "17681||"               => $item["17681||"] ?? $msgErro,               
+                "17684||"               => $item["17684||"] ?? $msgErro,               
+                "17684||nome"           => $item["17684||nome"] ?? $msgErro,           
+                "20554||"               => $item["20554||"] ?? $msgErro,               
+                "20554||nome"           => $item["20554||nome"] ?? $msgErro            
+            ];
+    }, $borabill);
+
+    return view('gabriel.default', compact('resultado'));
+      
+      
+}
+
+  private function DadosdoProcesso()
+    {
+        $obArcherSOAP = new ArcherSOAP();
+
+        $xml_relatorio = '<SearchReport>
+          <DisplayFields>
+            <DisplayField name="ID do Processo">20378</DisplayField>
+            <DisplayField name="Número do Cliente">17591</DisplayField>
+            <DisplayField name="Valor da Causa">20836</DisplayField>
+            <DisplayField name="Autor Principal">16107</DisplayField>
+            <DisplayField name="Número do processo CNJ">16072</DisplayField>
+            <DisplayField name="Objeto da Ação Principal">17714</DisplayField>
+            <DisplayField name="ID do Sistema - Peças Processuais">17681</DisplayField>
+            <DisplayField name="Documento">17684</DisplayField>
+            <DisplayField name="Tipo de Peça Processual">17685</DisplayField>
+            <DisplayField name="Anexo do Parecer Técnico">20554</DisplayField>
+            <DisplayField name="ID do Sistema - Subsídio">18156</DisplayField>
+          </DisplayFields>
+          <PageSize>50</PageSize>
+          <IsResultLimitPercent>False</IsResultLimitPercent>
+          <Criteria>
+            <Keywords />
+            <Filter>
+              <OperatorLogic />
+              <Conditions>
+                <ValueListFilterCondition>
+                  <Field name="Status do Processo">18580</Field>
+                  <Operator>Contains</Operator>
+                  <IsNoSelectionIncluded>False</IsNoSelectionIncluded>
+                  <IncludeChildren>False</IncludeChildren>
+                  <Values>
+                    <Value name="EM ANDAMENTO">82604</Value>
+                    <Value name="PRÉ ARQUIVADO">82605</Value>
+                  </Values>
+                </ValueListFilterCondition>
+                <ValueListFilterCondition>
+                  <Field name="Nome do Cliente">22321</Field>
+                  <Operator>DoesNotContain</Operator>
+                  <IsNoSelectionIncluded>False</IsNoSelectionIncluded>
+                  <IncludeChildren>False</IncludeChildren>
+                  <Values>
+                    <Value name="CONTENCIOSO">114751</Value>
+                    <Value name="YELUM">114750</Value>
+                  </Values>
+                </ValueListFilterCondition>
+                <ValueListFilterCondition>
+                  <Field name="Acordo Prévio foi realizado?">22905</Field>
+                  <Operator>DoesNotContain</Operator>
+                  <IsNoSelectionIncluded>False</IsNoSelectionIncluded>
+                  <IncludeChildren>False</IncludeChildren>
+                  <Values>
+                    <Value name="SIM">117820</Value>
+                  </Values>
+                </ValueListFilterCondition>
+                <TextFilterCondition>
+                  <Field name="Número do Cliente">17591</Field>
+                  <Operator>DoesNotContain</Operator>
+                  <Value />
+                </TextFilterCondition>
+                <ValueListFilterCondition>
+                  <Field name="Nome do Cliente">22321</Field>
+                  <Operator>Contains</Operator>
+                  <IsNoSelectionIncluded>False</IsNoSelectionIncluded>
+                  <IncludeChildren>False</IncludeChildren>
+                  <Values>
+                    <Value name="CVP">127971</Value>
+                  </Values>
+                </ValueListFilterCondition>
+                <ValueListFilterCondition>
+                  <Field name="Status do Processo">18580</Field>
+                  <Operator>Contains</Operator>
+                  <IsNoSelectionIncluded>False</IsNoSelectionIncluded>
+                  <IncludeChildren>False</IncludeChildren>
+                  <Values>
+                    <Value name="EM ANDAMENTO">82604</Value>
+                  </Values>
+                </ValueListFilterCondition>
+                <ValueListFilterCondition>
+                  <Field name="Tipo de Peça Processual">17685</Field>
+                  <Operator>Contains</Operator>
+                  <IsNoSelectionIncluded>False</IsNoSelectionIncluded>
+                  <IncludeChildren>False</IncludeChildren>
+                  <Values>
+                    <Value name="060 - PETIÇÃO INICIAL">69727</Value>
+                  </Values>
+                </ValueListFilterCondition>
+              </Conditions>
+            </Filter>
+            <ModuleCriteria>
+              <Module name="Processos">446</Module>
+              <IsKeywordModule>True</IsKeywordModule>
+              <BuildoutRelationship>Union</BuildoutRelationship>
+              <SortFields>
+                <SortField>
+                  <Field name="Estado">16068</Field>
+                  <SortType>Ascending</SortType>
+                </SortField>
+                <SortField>
+                  <Field name="Data do Arquivamento em Juízo">18578</Field>
+                  <SortType>Ascending</SortType>
+                </SortField>
+              </SortFields>
+              <Children>
+                <ModuleCriteria>
+                  <Module name="Peças Processuais">459</Module>
+                  <IsKeywordModule>False</IsKeywordModule>
+                  <BuildoutRelationship>Intersection</BuildoutRelationship>
+                  <SortFields>
+                    <SortField>
+                      <Field name="ID do Sistema - Peças Processuais">17681</Field>
+                      <SortType>Ascending</SortType>
+                    </SortField>
+                  </SortFields>
+                </ModuleCriteria>
+                <ModuleCriteria>
+                  <Module name="Subsídio">455</Module>
+                  <IsKeywordModule>False</IsKeywordModule>
+                  <BuildoutRelationship>Intersection</BuildoutRelationship>
+                  <SortFields>
+                    <SortField>
+                      <Field name="ID do Sistema - Subsídio">18156</Field>
+                      <SortType>Ascending</SortType>
+                    </SortField>
+                  </SortFields>
+                </ModuleCriteria>
+              </Children>
+            </ModuleCriteria>
+          </Criteria>
+        </SearchReport>';
+
+        $xml_rel_mapeamento = $obArcherSOAP->get_relatorio_completo($xml_relatorio);
+        $arDados = $obArcherSOAP->extrair_dados_relatorio3($xml_rel_mapeamento);
+      // dd($arDados);
+        return $arDados;
+    }
+}
+
+
+ 
