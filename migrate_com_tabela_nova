@@ -26,3 +26,5 @@ Schema::table('palavras_teses', function (Blueprint $table) {
     });
 
 depois rodar: php artisan migrate
+
+php artisan migrate --path=database/migrations/2026_07_07_165703_create_palavras_teses_table.php
