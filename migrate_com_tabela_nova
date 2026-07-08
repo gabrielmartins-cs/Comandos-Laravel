@@ -1,0 +1,15 @@
+1) primeiro criar a tabela
+php artisan make:model TeseFormatada -mcr    
+
+2) depois ajustar a migration criada: 
+
+ Schema::create('teses_formatadas', function (Blueprint $table) {
+           $table->id();
+            $table->integer('numero_tese'); 
+            $table->string('tipo'); 
+            $table->text('conteudo');
+            $table->timestamps();
+        });
+
+3) rodar o migrate
+php artisan migrate --path=database/migrations/2026_07_08_094449_create_tese_formatadas_table.php
