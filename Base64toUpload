@@ -1,0 +1,39 @@
+private function Base64toUpload($Idarquivo)
+  {
+    $docsub = new ArcherRest;
+    $respostaApi = $docsub->getPeca($Idarquivo);
+
+    if (!is_array($respostaApi) || !isset($respostaApi['AttachmentBytes'])) {
+      return ['erro' => $respostaApi];
+    }
+
+    $base64Data = $respostaApi['AttachmentBytes'];
+
+    $conteudoBinario = base64_decode($base64Data);
+
+    $diretorio = 'uploads/';
+    if (!is_dir($diretorio)) {
+      mkdir($diretorio, 0755, true);
+
+    }
+
+    $nomeArquivo = 'dossie' . rand(10000, 99999) . '.docx';
+    $caminhoCompleto = $diretorio . $nomeArquivo;
+
+    $sucesso = file_put_contents($caminhoCompleto, $conteudoBinario);
+
+    if ($sucesso !== false) {
+      $mensagem = [
+        'sucesso' => true,
+        'mensagem' => 'Arquivo salvo com sucesso!',
+        'nome_arquivo' => $nomeArquivo,
+        'caminho' => $caminhoCompleto
+      ];
+
+      return $mensagem;
+    } else {
+      return [
+        'erro' => 'Não foi possível salvar o arquivo no servidor. Verifique as permissões da pasta.'
+      ];
+    }
+  }
