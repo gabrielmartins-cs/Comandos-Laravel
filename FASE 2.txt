@@ -1,0 +1,54 @@
+def coletar(self, consultas: list[str]) -> dict:
+        """Retorna {"encontrados": [...], "processos": {...}}."""
+        encontrados = []
+        processos = {}
+
+        cnjs_vistos = set()
+
+        for consulta in consultas:
+            sopa = self._pesquisar(consulta, "TODOS")
+
+            while True:
+                for link in sopa.select("a.linkProcesso"):
+                    # 1. Transforma o HTML em texto, arranca as tags HTML e corta em palavras soltas
+                    texto_bruto = str(link).replace('<', ' ').replace('>', ' ').replace('"', ' ').replace('=', ' ')
+                    palavras = texto_bruto.split()
+                    
+                    cnj_limpo = None
+                    
+                    # 2. Procura a palavra que é idêntica a um formato de CNJ
+                    for palavra in palavras:
+                        if "-" in palavra and "." in palavra and len(palavra) == 25:
+                            cnj_limpo = palavra
+                            break
+                            
+                    # Se não achou nenhum CNJ nesse link (era só lixo), pula
+                    if not cnj_limpo:
+                        continue
+
+                    # 3. Bloqueia os processos duplicados
+                    if cnj_limpo in cnjs_vistos:
+                        continue
+
+                    cnjs_vistos.add(cnj_limpo)
+
+                    container = link.find_parent()
+                    elemento_foro = container.select_one(".foro") if container else None
+
+                    # 4. Guarda o processo usando o cnj_limpo que filtramos
+                    encontrados.append({
+                        "cnj": cnj_limpo,
+                        "url": self._url_absoluta(link["href"]),
+                        "foro": elemento_foro.text.strip() if elemento_foro else "São Paulo",
+                        "consulta": consulta
+                    })
+
+                # --- Lógica da Paginação ---
+                link_proxima = sopa.select_one("#proximaPagina")
+                if not link_proxima:
+                    break
+                
+                resposta = self.sessao.get(self._url_absoluta(link_proxima["href"]))
+                sopa = BeautifulSoup(resposta.text, "html.parser")
+
+        return {"encontrados": encontrados, "processos": processos}

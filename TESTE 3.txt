@@ -1,0 +1,75 @@
+def coletar(self, consultas: list[str]) -> dict:
+        """Retorna {"encontrados": [...], "processos": {...}}."""
+        encontrados = []
+        processos = {}
+
+        cnjs_vistos = set()
+
+        for consulta in consultas:
+            sopa = self._pesquisar(consulta, "TODOS")
+
+            container_foros = sopa.select_one("#forosDisponiveis")
+            if container_foros:
+                lista_de_foros = [elemento["data-foro"] for elemento in container_foros.select("[data-foro]")]
+            else:
+                lista_de_foros = ["TODOS"]
+
+            for foro_atual in lista_de_foros:
+                if foro_atual != "TODOS":
+                    sopa = self._pesquisar(consulta, foro_atual)
+
+                while True:
+                    for link in sopa.select("a.linkProcesso"):
+                        
+                        # Pega o link e um pouco do texto ao redor (o avô do link) para garantir
+                        pai = link.parent
+                        avo = pai.parent if pai else None
+                        
+                        texto_alvo = str(link) + " " + link.get("href", "")
+                        if avo: texto_alvo += " " + avo.get_text(separator=" ")
+                        elif pai: texto_alvo += " " + pai.get_text(separator=" ")
+                        
+                        # Filtro Universal: Transforma lixo em espaços
+                        texto_limpo = ""
+                        for char in texto_alvo:
+                            if char.isdigit() or char == "-" or char == ".":
+                                texto_limpo += char
+                            else:
+                                texto_limpo += " "
+
+                        cnj_limpo = None
+                        for palavra in texto_limpo.split():
+                            if len(palavra) == 25 and palavra[7] == "-" and palavra[10] == ".":
+                                # --- A MÁGICA ESTÁ AQUI ---
+                                # Só aceita o número se for INÉDITO! Se não for, continua lendo o texto!
+                                if palavra not in cnjs_vistos:
+                                    cnj_limpo = palavra
+                                    break
+
+                        if not cnj_limpo:
+                            continue
+
+                        # Agora sim anotamos como visto
+                        cnjs_vistos.add(cnj_limpo)
+
+                        # Como já estamos pesquisando por cidade, o foro é exatamente o que pesquisamos!
+                        foro_final = foro_atual if foro_atual != "TODOS" else "São Paulo"
+                        if foro_atual == "TODOS" and pai:
+                            elemento_foro = pai.select_one(".foro")
+                            if elemento_foro: foro_final = elemento_foro.text.strip()
+
+                        encontrados.append({
+                            "cnj": cnj_limpo,
+                            "url": self._url_absoluta(link["href"]),
+                            "foro": foro_final,
+                            "consulta": consulta
+                        })
+
+                    link_proxima = sopa.select_one("#proximaPagina")
+                    if not link_proxima:
+                        break
+
+                    resposta = self.sessao.get(self._url_absoluta(link_proxima["href"]))
+                    sopa = BeautifulSoup(resposta.text, "html.parser")
+
+        return {"encontrados": encontrados, "processos": processos}

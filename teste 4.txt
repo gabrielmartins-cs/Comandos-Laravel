@@ -1,0 +1,98 @@
+  def coletar(self, consultas: list[str]) -> dict:
+        encontrados = []
+        processos = {}
+        vistos = set()
+        cnj_padrao = re.compile(r'(\d{7})-?(\d{2})\.?(\d{4})\.?(\d)\.?(\d{2})\.?(\d{4})')
+
+        for consulta in consultas:
+            # Busca inicial apenas para descobrir foros
+            sopa_inicial = self._pesquisar(consulta, "TODOS")
+
+            foros_disp = sopa_inicial.select("#forosDisponiveis [data-foro]")
+            foros = [e["data-foro"] for e in foros_disp] if foros_disp else ["TODOS"]
+
+            for foro in foros:
+                pagina_atual = 1
+
+                while True:
+                    # Delega a responsabilidade de lidar com a expiração de sessão para um método auxiliar
+                    sopa = self._buscar_pagina_segura(consulta, foro, pagina_atual)
+
+                    if not sopa:
+                        break # Fim das páginas para este foro
+
+                    links = sopa.select("a.linkProcesso")
+                    if not links:
+                        break
+
+                    for a in links:
+                        cnj = a.get("data-cnj", "").strip()
+                        if not cnj:
+                            m = cnj_padrao.search(a.get("href", "") + a.get_text())
+                            if m:
+                                cnj = f"{m.group(1)}-{m.group(2)}.{m.group(3)}.{m.group(4)}.{m.group(5)}.{m.group(6)}"
+
+                        if cnj and cnj not in vistos:
+                            vistos.add(cnj)
+
+                            # Pega o foro real do HTML (necessário quando a busca é "TODOS")
+                            span_foro = a.find_next_sibling("span", class_="foro")
+                            nome_foro = span_foro.get_text(strip=True) if span_foro else foro
+
+                            encontrados.append({
+                                "cnj": cnj,
+                                "url": self._url_absoluta(a["href"]),
+                                "foro": nome_foro,
+                                "consulta": consulta
+                            })
+
+                    # Se não houver link de próxima página na sopa, encerra o loop deste foro
+                    if not sopa.select_one("#proximaPagina"):
+                        break
+
+                    pagina_atual += 1
+
+        return {"encontrados": encontrados, "processos": processos}
+
+    def _buscar_pagina_segura(self, consulta: str, foro: str, pagina_alvo: int) -> BeautifulSoup | None:
+        """
+        Inicia a sessão e salta DIRETAMENTE para a pagina_alvo,
+        evitando gastar o limite de requisições da sessão.
+        """
+        import urllib.parse  # Garante que temos as ferramentas de URL
+
+        while True:
+            # 1. Inicia uma sessão nova e limpa
+            sopa = self._pesquisar(consulta, foro)
+
+            # Se a página alvo for a 1, não precisa pular
+            if pagina_alvo == 1:
+                return sopa
+
+            # 2. Se for maior que 1, achamos o link da próxima página para "roubar" os tokens
+            prox = sopa.select_one("#proximaPagina")
+            if not prox:
+                return None
+
+            href_original = prox["href"]
+
+            # 3. Vamos desmontar a URL original (que diz pagina=2) e forçar a pagina_alvo
+            parsed = urllib.parse.urlparse(href_original)
+            query = urllib.parse.parse_qs(parsed.query)
+            query["pagina"] = [str(pagina_alvo)]  # Injeta o número da página que realmente queremos
+
+            # Remonta a URL
+            nova_query = urllib.parse.urlencode(query, doseq=True)
+            nova_url = urllib.parse.urlunparse(
+                (parsed.scheme, parsed.netloc, parsed.path, parsed.params, nova_query, parsed.fragment)
+            )
+
+            # 4. Faz o request direto para a página alvo!
+            resp = self.sessao.get(self._url_absoluta(nova_url))
+
+            # 5. Se o servidor for muito maldoso e derrubar mesmo assim, ele tenta de novo
+            if resp.status_code == 440 or "sessão expirou" in resp.text.lower():
+                print(f"DEBUG: Sessão caiu ao tentar pular para a página {pagina_alvo}. Reiniciando...")
+                continue
+
+            return BeautifulSoup(resp.text, "html.parser")
