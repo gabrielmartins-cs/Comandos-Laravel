@@ -1,0 +1,258 @@
+import re
+import urllib.parse
+import requests
+from bs4 import BeautifulSoup
+
+class CrawlerTribunal:
+    def __init__(self, url_base: str, url_resolvedor: str):
+        self.url_base = url_base
+        self.url_resolvedor = url_resolvedor
+        self.sessao = requests.Session()
+
+    def _url_absoluta(self, caminho: str) -> str:
+        return urllib.parse.urljoin(self.url_base, caminho)
+
+    def _pesquisar(self, consulta: str, foro: str) -> BeautifulSoup:
+        self.sessao = requests.Session()
+        
+        resp_get = self.sessao.get(self._url_absoluta("/consulta"))
+        sopa = BeautifulSoup(resp_get.text, "html.parser")
+
+        id_conversa = sopa.find("input", {"name": "id_conversa"})["value"]
+        estado_tela = sopa.find("input", {"name": "estado_tela"})["value"]
+        campo_consulta = sopa.find("input", id="campoConsulta")["name"]
+        campo_foro = sopa.find("select", id="comboForo")["name"]
+
+        dados = {
+            "id_conversa": id_conversa,
+            "estado_tela": estado_tela,
+            campo_consulta: consulta,
+            campo_foro: foro,
+            "resposta_captcha": ""
+        }
+
+        resp_post = self.sessao.post(self._url_absoluta("/pesquisar"), data=dados)
+        return BeautifulSoup(resp_post.text, "html.parser")
+
+    def _buscar_pagina_segura(self, consulta: str, foro: str, pagina_alvo: int) -> BeautifulSoup | None:
+        while True:
+            sopa = self._pesquisar(consulta, foro)
+
+            if pagina_alvo == 1:
+                return sopa
+
+            prox = sopa.select_one("#proximaPagina")
+            if not prox:
+                return None
+
+            href_original = prox["href"]
+            parsed = urllib.parse.urlparse(href_original)
+            query = urllib.parse.parse_qs(parsed.query)
+            query["pagina"] = [str(pagina_alvo)] 
+
+            nova_query = urllib.parse.urlencode(query, doseq=True)
+            nova_url = urllib.parse.urlunparse(
+                (parsed.scheme, parsed.netloc, parsed.path, parsed.params, nova_query, parsed.fragment)
+            )
+
+            resp = self.sessao.get(self._url_absoluta(nova_url))
+
+            if resp.status_code == 440 or "sessão expirou" in resp.text.lower() or "sessão expirada" in resp.text.lower():
+                continue
+
+            return BeautifulSoup(resp.text, "html.parser")
+
+    def coletar(self, consultas: list[str]) -> dict:
+        encontrados = []
+        processos = {}
+        vistos = set()
+        cnj_padrao = re.compile(r'(\d{7})-?(\d{2})\.?(\d{4})\.?(\d)\.?(\d{2})\.?(\d{4})')
+
+        for consulta in consultas:
+            sopa_inicial = self._pesquisar(consulta, "TODOS")
+
+            container_foros = sopa_inicial.select_one("#forosDisponiveis")
+            if container_foros:
+                foros = [e["data-foro"] for e in container_foros.select("[data-foro]")]
+            else:
+                foros = ["TODOS"]
+
+            for foro in foros:
+                pagina_atual = 1
+
+                while True:
+                    sopa = self._buscar_pagina_segura(consulta, foro, pagina_atual)
+
+                    if not sopa:
+                        break
+
+                    links = sopa.select("a.linkProcesso")
+                    if not links:
+                        break
+
+                    for link in links:
+                        cnj = link.get("data-cnj", "").strip()
+                        
+                        if not cnj:
+                            pai = link.parent
+                            avo = pai.parent if pai else None
+                            texto_alvo = str(link) + " " + link.get("href", "")
+                            if avo: texto_alvo += " " + avo.get_text(separator=" ")
+                            elif pai: texto_alvo += " " + pai.get_text(separator=" ")
+                            
+                            m = cnj_padrao.search(texto_alvo)
+                            if m:
+                                cnj = f"{m.group(1)}-{m.group(2)}.{m.group(3)}.{m.group(4)}.{m.group(5)}.{m.group(6)}"
+
+                        if cnj and cnj not in vistos:
+                            vistos.add(cnj)
+
+                            # CORREÇÃO FASE 3: Sempre extrair o nome do foro do HTML
+                            span_foro = link.find_next_sibling("span", class_="foro")
+                            foro_final = span_foro.get_text(strip=True) if span_foro else "São Paulo"
+
+                            encontrados.append({
+                                "cnj": cnj,
+                                "url": self._url_absoluta(link["href"]),
+                                "foro": foro_final,
+                                "consulta": consulta
+                            })
+
+                    if not sopa.select_one("#proximaPagina"):
+                        break
+
+                    pagina_atual += 1
+
+        for item in encontrados:
+            cnj = item["cnj"]
+            url_processo = item["url"]
+            if cnj not in processos:
+                processos[cnj] = self._extrair_processo(url_processo, cnj)
+
+        return {"encontrados": encontrados, "processos": processos}
+
+    def _extrair_processo(self, url: str, cnj_esperado: str) -> dict:
+        resp = self.sessao.get(url)
+        sopa = BeautifulSoup(resp.text, "html.parser")
+
+        dados = {
+            "cnj": cnj_esperado,
+            "classe": "",
+            "area": "",
+            "assuntos": [],
+            "partes": [],
+            "movimentos": [],
+            "documentos": [],
+            "segredo": False,
+            "arquivado": False
+        }
+
+        aviso_segredo = sopa.find(class_="aviso erro")
+        if aviso_segredo and "segredo" in aviso_segredo.get_text().lower():
+            dados["segredo"] = True
+            num_proc = sopa.select_one(".numeroProcesso")
+            if num_proc:
+                dados["cnj"] = num_proc.get_text(strip=True)
+            return dados
+
+        if sopa.select_one("#cabecalhoProcesso"):
+            dados["cnj"] = sopa.select_one('[data-rotulo="CNJ"]').get_text(strip=True)
+            dados["classe"] = sopa.select_one('[data-rotulo="Classe"]').get_text(strip=True)
+            dados["area"] = sopa.select_one('[data-rotulo="Área"]').get_text(strip=True)
+            
+            situacao = sopa.select_one('[data-rotulo="Situação"]').get_text(strip=True).lower()
+            dados["arquivado"] = ("arquivado" in situacao)
+
+            for li in sopa.select("#assuntos li"):
+                dados["assuntos"].append(li.get_text(strip=True))
+
+            for li in sopa.select("#partes li[data-polo]"):
+                dados["partes"].append({
+                    "polo": li["data-polo"].strip(),
+                    "nome": li.select_one(".nome").get_text(strip=True),
+                    "documento": li.select_one(".documento").get_text(strip=True)
+                })
+                
+            for a_doc in sopa.select("#listaDocumentos a[data-documento='true']"):
+                # CORREÇÃO FASE 6: Mudança da chave "caminho" para "url"
+                dados["documentos"].append({
+                    "nome": a_doc.get_text(strip=True),
+                    "url": self._url_absoluta(a_doc["href"])
+                })
+            
+            btn_movimentos = sopa.select_one("button[data-movimentos]")
+            if btn_movimentos:
+                self._extrair_movimentos(btn_movimentos["data-movimentos"], dados)
+
+        else:
+            principais = sopa.select_one("#dadosPrincipaisProcesso")
+            if principais:
+                rotulos = principais.select(".rotulo")
+                valores = principais.select(".valor")
+                for r, v in zip(rotulos, valores):
+                    txt_r = r.get_text(strip=True).replace(":", "").lower()
+                    txt_v = v.get_text(strip=True)
+                    
+                    if "número" in txt_r: dados["cnj"] = txt_v
+                    elif "classe" in txt_r: dados["classe"] = txt_v
+                    elif "área" in txt_r or "area" in txt_r: dados["area"] = txt_v
+                    elif "assunto" in txt_r: dados["assuntos"] = [a.strip() for a in txt_v.split(",") if a.strip()]
+                    elif "arquivado" in txt_r: dados["arquivado"] = (txt_v.lower() == "sim")
+
+            for tr in sopa.select("#tabelaPartes tr"):
+                tds = tr.select("td")
+                if len(tds) >= 3:
+                    dados["partes"].append({
+                        "polo": tds[0].get_text(strip=True),
+                        "nome": tds[1].get_text(strip=True),
+                        "documento": tds[2].get_text(strip=True)
+                    })
+
+            for a_doc in sopa.select("#documentos a.documento"):
+                # CORREÇÃO FASE 6: Mudança da chave "caminho" para "url"
+                dados["documentos"].append({
+                    "nome": a_doc.get_text(strip=True),
+                    "url": self._url_absoluta(a_doc["href"])
+                })
+                
+            link_movimentos = sopa.select_one("a#linkMovimentos")
+            if link_movimentos:
+                self._extrair_movimentos(link_movimentos["href"], dados)
+
+        return dados
+
+    def _extrair_movimentos(self, url_movimentos: str, dados_processo: dict):
+        vistos = set()
+        url_atual = self._url_absoluta(url_movimentos)
+
+        while url_atual:
+            resp = self.sessao.get(url_atual)
+            sopa = BeautifulSoup(resp.text, "html.parser")
+
+            for tr in sopa.select("table#movimentos tr.movimento"):
+                data_el = tr.select_one(".data")
+                texto_el = tr.select_one(".texto")
+                
+                data = data_el.get_text(strip=True) if data_el else ""
+                texto_bruto = texto_el.get_text(strip=True) if texto_el else ""
+                
+                texto_normalizado = re.sub(r"\s+", " ", texto_bruto).strip()
+                
+                doc_elemento = tr.select_one("a.documentoMovimento")
+                doc_url = self._url_absoluta(doc_elemento["href"]) if doc_elemento else ""
+
+                chave_duplicidade = (data, texto_normalizado.lower())
+                
+                if chave_duplicidade not in vistos:
+                    vistos.add(chave_duplicidade)
+                    dados_processo["movimentos"].append({
+                        "data": data,
+                        "texto": texto_bruto,
+                        "documento": doc_url
+                    })
+
+            proxima = sopa.select_one("a#proximosMovimentos")
+            if proxima:
+                url_atual = self._url_absoluta(proxima["href"])
+            else:
+                url_atual = None
