@@ -1,0 +1,17 @@
+Default Blade: 
+
+  <td class="text-center align-middle">
+                                {{-- Formulário Nativo: Envia 100% dos campos que vieram da sua API/Banco para este processo --}}
+                                <form action="{{ route('dossie.gerar') }}" method="POST" style="margin: 0;">
+                                    @csrf
+                                    <input type="hidden" name="processo_dados" value="{{ json_encode($item) }}">
+                                    <button type="submit" class="btn btn-sm btn-success shadow-sm" title="Gerar Dossiê deste processo">
+                                        <i class="fas fa-cog mr-1"></i> Gerar Dossiê
+                                    </button>
+                                </form>
+                            </td>
+
+
+Rota: 
+
+Route::middleware(['auth:sanctum', 'verified'])->post('/dossie/gerar', [DossieController::class, 'btnGerarDossie'])->name('dossie.gerar');
