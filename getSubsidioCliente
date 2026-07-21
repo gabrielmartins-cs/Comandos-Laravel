@@ -1,0 +1,66 @@
+//BAIXAR O ARQUIVO BASE64
+	private function getSubsidioCliente($Idarquivo, $nomeDaPasta)
+	{
+		$docsub = new ArcherRest;
+		$respostaApi = $docsub->getPecaProd($Idarquivo);
+
+		if (!is_array($respostaApi) || !isset($respostaApi['AttachmentBytes'])) {
+			return ['erro' => $respostaApi];
+		}
+
+		$base64Data = $respostaApi['AttachmentBytes'];
+
+		$conteudoBinario = base64_decode($base64Data);
+
+		//anteriormente só apagava, agora verifica se já existe, e se existir apaga
+		// $diretorio = 'uploads/' . $nomeDaPasta . '/';
+
+		// if (!is_dir($diretorio)) {
+		//   mkdir($diretorio, 0755, true);
+		// }
+
+
+		$diretorio = 'automacao_dossie/' . $nomeDaPasta . '/';
+		function apagarDiretorio($dir)
+		{
+			if (!is_dir($dir)) {
+				return false;
+			}
+			// array_diff é a interseção
+			$arquivos = array_diff(scandir($dir), array('.', '..'));
+
+			foreach ($arquivos as $arquivo) {
+				$caminho = "$dir/$arquivo";
+				is_dir($caminho) ? apagarDiretorio($caminho) : unlink($caminho);
+			}
+			return rmdir($dir);
+		}
+
+		if (is_dir($diretorio)) {
+			apagarDiretorio($diretorio);
+		}
+
+		mkdir($diretorio, 0755, true);
+		$nomeArquivo = 'subsidio' . rand(10000, 99999) . '.docx';
+		$caminhoCompleto = $diretorio . $nomeArquivo;
+
+		$sucesso = file_put_contents($caminhoCompleto, $conteudoBinario);
+
+		if ($sucesso !== false) {
+			return [
+				'sucesso' => true,
+				'mensagem' => 'Arquivo salvo com sucesso!',
+				'nome_arquivo' => $nomeArquivo,
+				'caminho' => $caminhoCompleto,
+				'pasta' => $nomeDaPasta
+			];
+
+			return $mensagem;
+
+			dd($sucesso);
+		} else {
+			return [
+				'erro' => 'Não foi possível salvar o arquivo no servidor. Verifique as permissões da pasta.'
+			];
+		}
+	}
